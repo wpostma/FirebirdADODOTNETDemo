@@ -17,6 +17,7 @@ namespace FirebirdTest1
 {
     public partial class Form1 : Form
     {
+        
         public Form1()
         {
             InitializeComponent();
@@ -110,25 +111,39 @@ namespace FirebirdTest1
                                    r => cols.ToDictionary(c => c.ColumnName, c => r[c.ColumnName]));
         }
 
-        private Dictionary<string, object> EraseNulls(Dictionary<string, object> Dict) 
-        {  
-            Dictionary<string, object> SparseDict = new Dictionary<string,object>();
-            foreach(var item in Dict.Keys)
-            {
-                if (Dict[item] != DBNull.Value)
-                    SparseDict[item] = Dict[item];
-            }
-            return SparseDict;
-        }
+        /*  
+                private Dictionary<string, object> EraseNulls(Dictionary<string, object> Dict) 
+                {  
+                    Dictionary<string, object> SparseDict = new Dictionary<string,object>();
+                    foreach(var item in Dict.Keys)
+                    {
+                        if (Dict[item] != DBNull.Value)
+                            SparseDict[item] = Dict[item];
+                    }
+                    return SparseDict;
+                }
         
-        private Dictionary<string, Dictionary<string, object>> DataTableToSparseDictionary(DataTable dt, string prefix, string id)
+              private Dictionary<string, Dictionary<string, object>> DataTableToSparseDictionary(DataTable dt, string prefix, string id)
+                {
+                    IColumns cols = dt.Columns.Cast<DataColumn>().Where(c => c.ColumnName != id);
+                    return dt.Rows.Cast<DataRow>()
+                             .ToDictionary(r => prefix + r[id].ToString(),
+                              r => EraseNulls( cols.ToDictionary(c => c.ColumnName, c => r[c.ColumnName]) ));
+                                          // r => SparseDictionary(r,cols) );
+            
+                }
+               */
+
+        Dictionary<string, Dictionary<string, object>> DataTableToSparseDictionary(DataTable dt, string prefix, string id)
         {
-            IColumns cols = dt.Columns.Cast<DataColumn>().Where(c => c.ColumnName != id);
+            var cols = dt.Columns.Cast<DataColumn>().Where(c => c.ColumnName != id);
             return dt.Rows.Cast<DataRow>()
                      .ToDictionary(r => prefix + r[id].ToString(),
-                      r => EraseNulls( cols.ToDictionary(c => c.ColumnName, c => r[c.ColumnName]) ));
-                                  // r => SparseDictionary(r,cols) );
-            
+                                   r => cols.Where(c => !Convert.IsDBNull(r[c.ColumnName])).ToDictionary
+                                       (
+                                                c => c.ColumnName, c => r[c.ColumnName]
+                                       )
+                                  );
         }
 
 
@@ -152,11 +167,14 @@ namespace FirebirdTest1
                 item.Value["_DOCUMENT_REV"]  = "1";
                 item.Value["_DOCUMENT_ORIGIN"] = "FBIMPORT";
             };
-            
+
+            var jsonSerializerSettings = new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore };
 
             richTextBox1.Text = JsonConvert.SerializeObject(
                                             dict, 
-                                            Newtonsoft.Json.Formatting.Indented);
+                                            Newtonsoft.Json.Formatting.Indented,
+                                            jsonSerializerSettings);
+            // Newtonsoft.Json.Formatting.Indented 
             
         }
 
@@ -183,11 +201,13 @@ namespace FirebirdTest1
                 item.Value["_DOCUMENT_REV"] = "1";
                 item.Value["_DOCUMENT_ORIGIN"] = "FBIMPORT";
             };
+            var jsonSerializerSettings = new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore };
 
 
             richTextBox1.Text = JsonConvert.SerializeObject(
                                             dict,
-                                            Newtonsoft.Json.Formatting.Indented);
+                                            Newtonsoft.Json.Formatting.Indented,
+                                            jsonSerializerSettings); 
 
         }
         private void button1_Click(object sender, EventArgs e)

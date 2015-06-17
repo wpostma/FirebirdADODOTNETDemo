@@ -10,8 +10,14 @@ using System.Windows.Forms;
 
 using Newtonsoft.Json;
 
-// Type Equivalences for this unit:
-using IColumns = System.Collections.Generic.IEnumerable<System.Data.DataColumn>;
+
+
+//############################################### Type Equivalences, local for this unit ########################################
+using JsonDictionary = System.Collections.Generic.Dictionary<string, object>;
+using JsonTableDictionary = System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, object> >;
+using JsonDictionaryItem = System.Collections.Generic.KeyValuePair<string,System.Collections.Generic.Dictionary<string,object>>;
+// using IColumns = System.Collections.Generic.IEnumerable<System.Data.DataColumn>;
+//#################################################################################################################################
 
 namespace FirebirdTest1
 {
@@ -102,8 +108,8 @@ namespace FirebirdTest1
             richTextBox1.Text = sb.ToString();
         }
 
-        // Helper used when converting DataRow to a JSON.
-        private Dictionary<string, Dictionary<string, object>> DataTableToDictionary(DataTable dt, string prefix, string id)
+        // Helper used when converting DataRow to a Dictionary, which we then can convert to JSON, used if you want to include nulls.
+        private JsonTableDictionary DataTableToDictionary(DataTable dt, string prefix, string id)
         {
             var cols = dt.Columns.Cast<DataColumn>().Where( c => c.ColumnName != id );
             return dt.Rows.Cast<DataRow>()
@@ -111,30 +117,9 @@ namespace FirebirdTest1
                                    r => cols.ToDictionary(c => c.ColumnName, c => r[c.ColumnName]));
         }
 
-        /*  
-                private Dictionary<string, object> EraseNulls(Dictionary<string, object> Dict) 
-                {  
-                    Dictionary<string, object> SparseDict = new Dictionary<string,object>();
-                    foreach(var item in Dict.Keys)
-                    {
-                        if (Dict[item] != DBNull.Value)
-                            SparseDict[item] = Dict[item];
-                    }
-                    return SparseDict;
-                }
-        
-              private Dictionary<string, Dictionary<string, object>> DataTableToSparseDictionary(DataTable dt, string prefix, string id)
-                {
-                    IColumns cols = dt.Columns.Cast<DataColumn>().Where(c => c.ColumnName != id);
-                    return dt.Rows.Cast<DataRow>()
-                             .ToDictionary(r => prefix + r[id].ToString(),
-                              r => EraseNulls( cols.ToDictionary(c => c.ColumnName, c => r[c.ColumnName]) ));
-                                          // r => SparseDictionary(r,cols) );
-            
-                }
-               */
 
-        Dictionary<string, Dictionary<string, object>> DataTableToSparseDictionary(DataTable dt, string prefix, string id)
+        // Helper used when converting DataRow to a Dictionary, which we then can convert to JSON, used if you want to exclude nulls.
+        private JsonTableDictionary DataTableToSparseDictionary(DataTable dt, string prefix, string id)
         {
             var cols = dt.Columns.Cast<DataColumn>().Where(c => c.ColumnName != id);
             return dt.Rows.Cast<DataRow>()
@@ -161,7 +146,7 @@ namespace FirebirdTest1
             // The prefix is how we know the TYPE of the document.
             var dict = DataTableToDictionary(table, "APPOINTMENTLOGENTRY.", "ENTRYID");
 
-            foreach (var item in dict) 
+            foreach (JsonDictionaryItem item in dict) 
             {
                 item.Value["_DOCUMENT_TYPE"] = "APPOINTMENTLOGENTRY";
                 item.Value["_DOCUMENT_REV"]  = "1";
@@ -169,6 +154,8 @@ namespace FirebirdTest1
             };
 
             var jsonSerializerSettings = new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore };
+
+            
 
             richTextBox1.Text = JsonConvert.SerializeObject(
                                             dict, 
@@ -193,13 +180,23 @@ namespace FirebirdTest1
 
             // here's our key: Transform the rows to documents, with a prefix, and a primary key value.
             // The prefix is how we know the TYPE of the document.
+
+            // DataTableToSparseDictionary -> Do not include nulls.
+            // DataTableToDictionary -> Include nulls.
             var dict = DataTableToSparseDictionary(StudyAccess, "STUDYACCESS.",  "ENTRYID");
+
+            var writer = new CouchbaseExportWriter("http://couchbase1.ramsoft.biz:8091/pools");
+
+            writer.openBucket("default");
 
             foreach (var item in dict)
             {
                 item.Value["_DOCUMENT_TYPE"] = "STUDYACCESS";
                 item.Value["_DOCUMENT_REV"] = "1";
                 item.Value["_DOCUMENT_ORIGIN"] = "FBIMPORT";
+
+                writer.upsert(item.Key, item.Value);
+
             };
             var jsonSerializerSettings = new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore };
 
@@ -207,19 +204,27 @@ namespace FirebirdTest1
             richTextBox1.Text = JsonConvert.SerializeObject(
                                             dict,
                                             Newtonsoft.Json.Formatting.Indented,
-                                            jsonSerializerSettings); 
+                                            jsonSerializerSettings);
+
+            
+
+
+
 
         }
         private void button1_Click(object sender, EventArgs e)
         {
+           // DEMO1
            // EnumerateDataSetsAndColumns();
+
+           // DEMO2
            // GetConfigurationItems();
 
+           // DEMO3
            // RunACustomQueryOnApplicationLogAndConvertToJSON();
 
-            RunACustomQueryOnStudyAccessLogAndConvertToJSON();
-        
-
+           // DEMO4
+           RunACustomQueryOnStudyAccessLogAndConvertToJSON();
         }
     }
 }

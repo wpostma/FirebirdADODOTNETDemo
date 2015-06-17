@@ -8,6 +8,8 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
+using Newtonsoft.Json;
+
 namespace FirebirdTest1
 {
     public partial class Form1 : Form
@@ -41,20 +43,17 @@ namespace FirebirdTest1
             richTextBox1.Text = sb.ToString();
         }
 
-        private void button1_Click(object sender, EventArgs e)
+        public void GetConfigurationItems()
         {
-           // EnumerateDataSetsAndColumns();
-            
-
             var Config = new LoggingAndConfig.CONFIGDataTable();
             var ConfigAd = new LoggingAndConfigTableAdapters.CONFIGTableAdapter();
-        
+
             ConfigAd.Fill(Config);
             var sb = new StringBuilder();
             int lines = 0;
             foreach (var row in Config)
             {
-                
+
                 string strValue;
                 if (row.IsSTRVALUENull())
                 {
@@ -86,16 +85,63 @@ namespace FirebirdTest1
                         strValue = "<empty-string>";
                     }
                 }
-                sb.AppendLine( row.USERNAME +":: "+ row.FIRSTCAT + '.' + row.SECONDCAT + '.' + row.ITEM+ " = " + strValue);
+                sb.AppendLine(row.USERNAME + ":: " + row.FIRSTCAT + '.' + row.SECONDCAT + '.' + row.ITEM + " = " + strValue);
                 lines++;
 
-                if (lines > 300) {
+                if (lines > 300)
+                {
                     break;
                 }
-                
+
 
             }
             richTextBox1.Text = sb.ToString();
+        }
+
+        // Helper used when converting DataRow to a JSON.
+        private Dictionary<string, Dictionary<string, object>> DataTableToDictionary(DataTable dt, string prefix, string id)
+        {
+            var cols = dt.Columns.Cast<DataColumn>().Where(c => c.ColumnName != id);
+            return dt.Rows.Cast<DataRow>()
+                     .ToDictionary(r => prefix+r[id].ToString(),
+                                   r => cols.ToDictionary(c => c.ColumnName, c => r[c.ColumnName]));
+        }
+
+        public void RunACustomQueryOnApplicationLogAndConvertToJSON()
+        {
+
+            //var APPOINTMENTLOG = new LoggingAndConfig.APPOINTMENTLOGDataTable(); // <-- This is to get ALL ROWS.
+            // But to only get certain rows, we use GetDataBy[SomeCustomQueryHere]
+
+            var apptAd = new LoggingAndConfigTableAdapters.APPOINTMENTLOGTableAdapter();
+            var table = apptAd.GetDataByStudyId(618);
+            //var sb = new StringBuilder();
+
+            // here's our key: Transform the rows to documents, with a prefix, and a primary key value.
+            // The prefix is how we know the TYPE of the document.
+            var dict = DataTableToDictionary(table, "APPOINTMENTLOGENTRY.", "ENTRYID");
+
+            foreach (var item in dict) 
+            {
+                item.Value["_DOCUMENT_TYPE"] = "APPOINTMENTLOGENTRY";
+                item.Value["_DOCUMENT_REV"]  = "1";
+                item.Value["_DOCUMENT_ORIGIN"] = "FBIMPORT";
+            };
+            
+
+            richTextBox1.Text = JsonConvert.SerializeObject(
+                                            dict, 
+                                            Newtonsoft.Json.Formatting.Indented);
+            
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+           // EnumerateDataSetsAndColumns();
+           // GetConfigurationItems();
+
+            RunACustomQueryOnApplicationLogAndConvertToJSON();
+        
 
         }
     }

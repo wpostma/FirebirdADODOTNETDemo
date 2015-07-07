@@ -53,6 +53,23 @@ namespace FirebirdTest1
             return connect;
 
         }
+
+         int executeCommand(FbConnection connection, FbTransaction transaction, string commandSql)
+         {
+             var cmd = new FbCommand(commandSql);
+             cmd.Connection = connection;
+             cmd.Transaction = transaction;
+             return cmd.ExecuteNonQuery();
+         }
+
+         FbDataReader executeQuery(FbConnection connection, FbTransaction transaction, string querySql)
+         {
+             var qry = new FbCommand(querySql);
+             qry.Connection = connection;
+             qry.Transaction = transaction;
+             return qry.ExecuteReader(); // the command generates an FbDataReader.
+         }
+
         public void EnumerateDataSetsAndColumns() 
         {
             var LoggingAndConfigDataSet = new LoggingAndConfig();
@@ -252,17 +269,52 @@ namespace FirebirdTest1
 
         }
 
-        private void JoinDemo()
+        private void DeleteDemo()
         {
             var connection = getConnection();
-
             var trans = connection.BeginTransaction();
+            int result = executeCommand(connection, trans, "delete from  AMDQUEUE" ); // returns integer result
+            trans.Commit();
+            connection.Close();
+
+            
+        }
+
+        private void JoinDemo()
+        {
+            // Query Administrator-level users.
+            var connection = getConnection();
+            var trans = connection.BeginTransaction();
+            var query = executeQuery(connection, trans,
+                @"-- active administrative and support account names
+                select U.USERNAME,R.rolename,U.status 
+                from userlist U 
+                left join ROLELIST R on R.ROLEID=U.ROLEID
+                where
+                (u.USERNAME starts with 'RAM' or
+                ROLENAME starts with 'SU')
+                and STATUS <> 'INACTIVE' ");
+
+            if (query.HasRows)
+            {
+                var sb = new StringBuilder();
+            
+                while (query.Read())
+                {
+                    sb.AppendLine( "USERNAME:"+ query.GetString(0)+ "  ROLENAME:"+query.GetString(1)+ "  STATUS:"+ query.GetString(2) );
+
+
+
+                }
+
+                richTextBox1.Text = sb.ToString();
+            }
 
             trans.Commit();
 
+            connection.Close();
 
 
-            
         }
 
         private void button1_Click(object sender, EventArgs e)

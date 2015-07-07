@@ -70,6 +70,16 @@ namespace FirebirdTest1
              return qry.ExecuteReader(); // the command generates an FbDataReader.
          }
 
+        FbDataReader executeQueryParam1(FbConnection connection, FbTransaction transaction, string querySql, string param1)
+        {
+            var qry = new FbCommand(querySql);
+            qry.Connection = connection;
+            qry.Transaction = transaction;
+            qry.Prepare();
+            qry.Parameters.AddWithValue( "1", param1);
+            return qry.ExecuteReader(); // the command generates an FbDataReader.
+        }
+
         public void EnumerateDataSetsAndColumns() 
         {
             var LoggingAndConfigDataSet = new LoggingAndConfig();
@@ -285,15 +295,15 @@ namespace FirebirdTest1
             // Query Administrator-level users.
             var connection = getConnection();
             var trans = connection.BeginTransaction();
-            var query = executeQuery(connection, trans,
+            var query = executeQueryParam1(connection, trans,
                 @"-- active administrative and support account names
                 select U.USERNAME,R.rolename,U.status 
                 from userlist U 
                 left join ROLELIST R on R.ROLEID=U.ROLEID
                 where
-                (u.USERNAME starts with 'RAM' or
+                (u.USERNAME starts with @1 or
                 ROLENAME starts with 'SU')
-                and STATUS <> 'INACTIVE' ");
+                and STATUS <> 'INACTIVE' ",  "RAM");
 
             if (query.HasRows)
             {

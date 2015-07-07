@@ -1,4 +1,6 @@
-﻿using System;
+﻿
+using System;
+using System.Configuration;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -11,11 +13,14 @@ using System.Windows.Forms;
 using Newtonsoft.Json;
 
 
+using FirebirdSql.Data.FirebirdClient;
+
 
 //############################################### Type Equivalences, local for this unit ########################################
 using JsonDictionary = System.Collections.Generic.Dictionary<string, object>;
 using JsonTableDictionary = System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, object> >;
 using JsonDictionaryItem = System.Collections.Generic.KeyValuePair<string,System.Collections.Generic.Dictionary<string,object>>;
+using System.Data.SqlClient;
 // using IColumns = System.Collections.Generic.IEnumerable<System.Data.DataColumn>;
 //#################################################################################################################################
 
@@ -30,6 +35,24 @@ namespace FirebirdTest1
         
         }
 
+        /*SqlConnection getConnection()
+        {
+            // This is the MSSQL connection logic.
+            var connection = new SqlConnection(  ConfigurationManager.ConnectionStrings["FirebirdTest1.Properties.Settings.mssql"].ConnectionString);
+            connection.Open();
+            return connection;
+        }
+        */
+        
+        // This is the Firebird connection logic.
+        FbConnection getConnection()
+        {
+            var connectStr = ConfigurationManager.ConnectionStrings["FirebirdTest1.Properties.Settings.pacsdb"].ConnectionString;
+            FbConnection connect = new FbConnection(connectStr);
+            connect.Open();
+            return connect;
+
+        }
         public void EnumerateDataSetsAndColumns() 
         {
             var LoggingAndConfigDataSet = new LoggingAndConfig();
@@ -108,25 +131,41 @@ namespace FirebirdTest1
             richTextBox1.Text = sb.ToString();
         }
 
+        // we want json fields to be in lowercase.
+        // we want the primary key from firebird to become _fbidentity in the converted record.
+        private string Normalize(string value, string id)
+        {
+            if (value.ToUpper() == id.ToUpper())
+                return "_fbidentity";
+            else
+                return value.ToLower();
+        }
+
+        /* 
+          private string NormalizeKeyValue(object value, string ColumnName)
+          { 
+          }
+         */
+
         // Helper used when converting DataRow to a Dictionary, which we then can convert to JSON, used if you want to include nulls.
         private JsonTableDictionary DataTableToDictionary(DataTable dt, string prefix, string id)
         {
             var cols = dt.Columns.Cast<DataColumn>().Where( c => c.ColumnName != id );
             return dt.Rows.Cast<DataRow>()
                      .ToDictionary(r => prefix+r[id].ToString(),
-                                   r => cols.ToDictionary(c => c.ColumnName, c => r[c.ColumnName]));
+                                   r => cols.ToDictionary(c => Normalize( c.ColumnName, id ), c => r[c.ColumnName]));
         }
 
 
         // Helper used when converting DataRow to a Dictionary, which we then can convert to JSON, used if you want to exclude nulls.
         private JsonTableDictionary DataTableToSparseDictionary(DataTable dt, string prefix, string id)
         {
-            var cols = dt.Columns.Cast<DataColumn>().Where(c => c.ColumnName != id);
+            var cols = dt.Columns.Cast<DataColumn>();// .Where(c => c.ColumnName != id);
             return dt.Rows.Cast<DataRow>()
                      .ToDictionary(r => prefix + r[id].ToString(),
                                    r => cols.Where(c => !Convert.IsDBNull(r[c.ColumnName])).ToDictionary
                                        (
-                                                c => c.ColumnName, c => r[c.ColumnName]
+                                                c => Normalize(c.ColumnName,id), c => r[c.ColumnName]
                                        )
                                   );
         }
@@ -148,9 +187,9 @@ namespace FirebirdTest1
 
             foreach (JsonDictionaryItem item in dict) 
             {
-                item.Value["_DOCUMENT_TYPE"] = "APPOINTMENTLOGENTRY";
-                item.Value["_DOCUMENT_REV"]  = "1";
-                item.Value["_DOCUMENT_ORIGIN"] = "FBIMPORT";
+                item.Value["_document_type"] = "APPOINTMENTLOGENTRY";
+                item.Value["_document_rev"]  = "1";
+                item.Value["_document_origin"] = "FBIMPORT";
             };
 
             var jsonSerializerSettings = new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore };
@@ -191,16 +230,16 @@ namespace FirebirdTest1
 
             foreach (var item in dict)
             {
-                item.Value["_DOCUMENT_TYPE"] = "STUDYACCESS";
-                item.Value["_DOCUMENT_REV"] = "1";
-                item.Value["_DOCUMENT_ORIGIN"] = "FBIMPORT";
+                item.Value["_document_type"] = "STUDYACCESS";
+                item.Value["_document_rev"] = "1";
+                item.Value["_document_origin"] = "FBIMPORT";
 
                 writer.upsert(item.Key, item.Value);
 
             };
+
+            // Newtonsoft JSON serializer
             var jsonSerializerSettings = new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore };
-
-
             richTextBox1.Text = JsonConvert.SerializeObject(
                                             dict,
                                             Newtonsoft.Json.Formatting.Indented,
@@ -212,19 +251,36 @@ namespace FirebirdTest1
 
 
         }
+
+        private void JoinDemo()
+        {
+            var connection = getConnection();
+
+            var trans = connection.BeginTransaction();
+
+            trans.Commit();
+
+
+
+            
+        }
+
         private void button1_Click(object sender, EventArgs e)
         {
-           // DEMO1
+           // DEMO1 - Find any table or field within the Dataset.
            // EnumerateDataSetsAndColumns();
 
-           // DEMO2
+           // DEMO2 - Some simple flattening of SQL complexity, configuration items.
            // GetConfigurationItems();
 
-           // DEMO3
+           // DEMO3 - Gets data from firebird and converts to JSON
            // RunACustomQueryOnApplicationLogAndConvertToJSON();
 
-           // DEMO4
-           RunACustomQueryOnStudyAccessLogAndConvertToJSON();
+           // DEMO4 - Like demo3, but also writes to couchbase
+           //RunACustomQueryOnStudyAccessLogAndConvertToJSON();
+
+           // DEMO5 - Do an SQL Join 
+            JoinDemo();
         }
     }
 }

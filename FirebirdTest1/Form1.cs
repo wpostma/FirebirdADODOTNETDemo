@@ -9,7 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-
+using System.Diagnostics;
 using Newtonsoft.Json;
 
 
@@ -228,7 +228,7 @@ namespace FirebirdTest1
                                             Newtonsoft.Json.Formatting.Indented,
                                             jsonSerializerSettings);
             // Newtonsoft.Json.Formatting.Indented 
-            
+            label1.Text = "count: " + dict.Count.ToString();
         }
 
         public void RunACustomQueryOnStudyAccessLogAndConvertToJSON()
@@ -238,9 +238,10 @@ namespace FirebirdTest1
             //var StudyAccessAd = new LoggingAndConfigTableAdapters.STUDYACCESSTableAdapter();
             //StudyAccessAd.Fill(StudyAccess);
             var studyAd = new LoggingAndConfigTableAdapters.STUDYACCESSTableAdapter();
-            var startDate = System.DateTime.Now.AddDays(-7);
+            var startDate = System.DateTime.Now.AddDays(-365);
             var endDate = System.DateTime.Now.AddDays(7);
 
+            
             var StudyAccess = studyAd.GetDataByAccessTimeRange( startDate, endDate);
 
 
@@ -253,8 +254,16 @@ namespace FirebirdTest1
 
             var writer = new CouchbaseExportWriter("http://couchbase1.ramsoft.biz:8091/pools");
 
-            writer.openBucket("default");
+            var partialdict = new JsonTableDictionary();
 
+            writer.openBucket("default");
+            int count = 0;
+
+            var sw = new Stopwatch();
+
+            sw.Start();
+
+            // Add some metadata
             foreach (var item in dict)
             {
                 item.Value["_document_type"] = "STUDYACCESS";
@@ -263,18 +272,30 @@ namespace FirebirdTest1
 
                 writer.upsert(item.Key, item.Value);
 
+                count++;
+
+                if (count<10)
+                {
+                    partialdict.Add(item.Key, item.Value);
+                }
+
             };
+
+            sw.Stop();
 
             // Newtonsoft JSON serializer
             var jsonSerializerSettings = new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore };
+
+            // Don't output the whole thing to screen, just a few items (partialdict = up to 10 items from dict)
             richTextBox1.Text = JsonConvert.SerializeObject(
-                                            dict,
+                                            partialdict,
                                             Newtonsoft.Json.Formatting.Indented,
                                             jsonSerializerSettings);
 
-            
 
 
+
+            label1.Text = "db upsert count: "+ dict.Count.ToString() + " elapsed:" +sw.ElapsedMilliseconds.ToString()+" ms";
 
 
         }
@@ -336,13 +357,13 @@ namespace FirebirdTest1
            // GetConfigurationItems();
 
            // DEMO3 - Gets data from firebird and converts to JSON
-           // RunACustomQueryOnApplicationLogAndConvertToJSON();
+           //RunACustomQueryOnApplicationLogAndConvertToJSON();
 
            // DEMO4 - Like demo3, but also writes to couchbase
-           //RunACustomQueryOnStudyAccessLogAndConvertToJSON();
+           RunACustomQueryOnStudyAccessLogAndConvertToJSON();
 
-           // DEMO5 - Do an SQL Join 
-            JoinDemo();
+           // DEMO5 - Do an SQL Join via a query with one parameter (@1)
+           // JoinDemo();
         }
     }
 }

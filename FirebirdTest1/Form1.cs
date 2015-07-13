@@ -26,6 +26,13 @@ using System.Data.SqlClient;
 
 namespace FirebirdTest1
 {
+      [Serializable()]
+    public class CommunicationFailureException :  System.ApplicationException
+    {
+        public CommunicationFailureException() { }
+        public CommunicationFailureException(string message) : base(message) { } 
+    }
+
     public partial class Form1 : Form
     {
         
@@ -284,6 +291,11 @@ namespace FirebirdTest1
                 if (count<10)
                 {
                     partialdict.Add(item.Key, item.Value);
+                }
+
+                if (sw.ElapsedMilliseconds > 10000)
+                {
+                    throw new CommunicationFailureException("Communications are too slow.");
                 }
 
             };

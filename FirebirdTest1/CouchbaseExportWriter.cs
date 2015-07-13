@@ -31,6 +31,13 @@ using JsonDictionaryItem = System.Collections.Generic.KeyValuePair<string, Syste
 
 namespace FirebirdTest1
 {
+    [Serializable()]
+    public class CouchbaseExportWriterFailureException : System.ApplicationException
+    {
+        public CouchbaseExportWriterFailureException() { }
+        public CouchbaseExportWriterFailureException(string message) : base(message) { }
+    }
+
     class CouchbaseExportWriter
     {
         private ClientConfiguration _config;
@@ -75,7 +82,12 @@ namespace FirebirdTest1
 
         public void upsert( Couchbase.Document<dynamic> document)
         {
-            _bucket.Upsert(document);
+           IDocumentResult<dynamic> result = _bucket.Upsert(document);
+            if (result.Status != Couchbase.IO.ResponseStatus.Success)
+            {
+                throw new CouchbaseExportWriterFailureException(result.Exception.Message);
+            }
+                        
         }
 
         public void upsert(string id, JsonDictionary documentDictionary )
@@ -85,7 +97,11 @@ namespace FirebirdTest1
               Content = documentDictionary
             };
 
-            _bucket.Upsert(couchDoc);
+            IDocumentResult<dynamic> result = _bucket.Upsert(couchDoc);
+            if (result.Status != Couchbase.IO.ResponseStatus.Success)
+            {
+                throw new CouchbaseExportWriterFailureException(result.Exception.Message);
+            }
         }
 
         public void delete(string id)

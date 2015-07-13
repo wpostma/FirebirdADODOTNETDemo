@@ -293,7 +293,7 @@ namespace FirebirdTest1
                     partialdict.Add(item.Key, item.Value);
                 }
 
-                if (sw.ElapsedMilliseconds > 30000)
+                if (sw.ElapsedMilliseconds > 60000)
                 {
                     throw new CommunicationFailureException("Communications are too slow."); // Run this outside the debugger to speed it up!
                 }

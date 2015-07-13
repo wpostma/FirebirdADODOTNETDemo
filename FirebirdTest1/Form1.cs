@@ -295,7 +295,7 @@ namespace FirebirdTest1
 
                 if (sw.ElapsedMilliseconds > 60000)
                 {
-                    throw new CommunicationFailureException("Communications are too slow."); // Run this outside the debugger to speed it up!
+                    throw new CommunicationFailureException("Communications are too slow."); // Run this outside the debugger to speed it up! Or go to App.config and reduce or disable the Logging.
                 }
 
             };

@@ -233,6 +233,9 @@ namespace FirebirdTest1
 
         public void RunACustomQueryOnStudyAccessLogAndConvertToJSON()
         {
+            richTextBox1.Text = "Please wait...";
+            
+
 
             //var StudyAccess = new LoggingAndConfig.STUDYACCESSDataTable(); 
             //var StudyAccessAd = new LoggingAndConfigTableAdapters.STUDYACCESSTableAdapter();
@@ -252,11 +255,15 @@ namespace FirebirdTest1
             // DataTableToDictionary -> Include nulls.
             var dict = DataTableToSparseDictionary(StudyAccess, "STUDYACCESS.",  "ENTRYID");
 
-            var writer = new CouchbaseExportWriter("http://couchbase1.ramsoft.biz:8091/pools");
+            var writer = new CouchbaseExportWriter("http://rscouchbase01.ramsoft.com:8091/pools"); // couchbase1.ramsoft.biz
 
             var partialdict = new JsonTableDictionary();
 
             writer.openBucket("default");
+
+            label1.Text = "bucket item count= " + writer.getBucketItemCount().ToString();
+
+
             int count = 0;
 
             var sw = new Stopwatch();
@@ -267,7 +274,7 @@ namespace FirebirdTest1
             foreach (var item in dict)
             {
                 item.Value["_document_type"] = "STUDYACCESS";
-                item.Value["_document_rev"] = "1";
+                item.Value["_document_rev"] = "2";
                 item.Value["_document_origin"] = "FBIMPORT";
 
                 writer.upsert(item.Key, item.Value);
@@ -295,7 +302,9 @@ namespace FirebirdTest1
 
 
 
-            label1.Text = "db upsert count: "+ dict.Count.ToString() + " elapsed:" +sw.ElapsedMilliseconds.ToString()+" ms";
+        
+            label1.Text = "db upsert count: "+ dict.Count.ToString() + " elapsed:" +sw.ElapsedMilliseconds.ToString()+
+                          " ms, bucket item count= "+writer.getBucketItemCount().ToString();
 
 
         }

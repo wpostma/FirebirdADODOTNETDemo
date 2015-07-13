@@ -262,7 +262,7 @@ namespace FirebirdTest1
             // DataTableToDictionary -> Include nulls.
             var dict = DataTableToSparseDictionary(StudyAccess, "STUDYACCESS.",  "ENTRYID");
 
-            var writer = new CouchbaseExportWriter("http://rscouchbase01.ramsoft.com:8091/pools"); // couchbase1.ramsoft.biz
+            var writer = new CouchbaseExportWriter("http://couchbase1.ramsoft.biz:8091/pools"); // couchbase1.ramsoft.biz
 
             var partialdict = new JsonTableDictionary();
 
@@ -293,9 +293,9 @@ namespace FirebirdTest1
                     partialdict.Add(item.Key, item.Value);
                 }
 
-                if (sw.ElapsedMilliseconds > 10000)
+                if (sw.ElapsedMilliseconds > 30000)
                 {
-                    throw new CommunicationFailureException("Communications are too slow.");
+                    throw new CommunicationFailureException("Communications are too slow."); // Run this outside the debugger to speed it up!
                 }
 
             };

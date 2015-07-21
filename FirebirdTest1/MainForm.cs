@@ -18,6 +18,7 @@ namespace FirebirdTest1
         public void StatusEvent(object sender, StatusEventArgs args)
         {
             toolStripStatusLabel1.Text = args.Message;
+            statusStrip1.Refresh();
 
 
         }
@@ -25,6 +26,7 @@ namespace FirebirdTest1
         public void SampleOutputEvent(object sender, StatusEventArgs args)
         {
             textBox1.Text = args.Message;
+            textBox1.Refresh();
         }
 
 
@@ -42,7 +44,13 @@ namespace FirebirdTest1
         private void button1_Click(object sender, EventArgs e)
         {
             toolStripStatusLabel1.Text = "Please wait...";
+            toolStripStatusLabel1.BackColor = Color.Beige;
+            statusStrip1.Refresh(); 
+
             Conversion.DoConvert(); // run the conversion.
+
+            statusStrip1.Refresh();
+
         }
     }
 }

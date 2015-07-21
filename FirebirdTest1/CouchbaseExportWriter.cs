@@ -76,7 +76,35 @@ namespace FirebirdTest1
 
         public void openBucket(string bucketName)
         {
-            _bucket = _cluster.OpenBucket(bucketName);
+            const int Retries = 3;
+            const int LastTry = Retries - 1;
+
+            Boolean success = false;
+
+            for (var i = 0; i < Retries; i++)
+            {
+                try
+                {
+                    _bucket = _cluster.OpenBucket(bucketName);
+                    success = true;
+                    break;
+
+                }
+                catch (System.AggregateException exception)
+                {
+                    success = false;
+                    if (i == LastTry)
+                        throw exception;
+
+                }
+            }
+
+            if (!success)
+            {
+                throw new Exception("openBucket failed.");
+            }
+                    
+            
             
         }
 

@@ -1,6 +1,7 @@
 ﻿
 using System;
 using System.Configuration;
+using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -33,13 +34,50 @@ namespace FirebirdTest1
         public CommunicationFailureException(string message) : base(message) { } 
     }
 
-    public partial class Form1 : Form
+
+    public class StatusEventArgs : EventArgs
     {
-        
-        public Form1()
+        public int ErrorCode { get; set; }
+        public string Message { get; set; }
+
+        public StatusEventArgs( int error, string message)
         {
-            InitializeComponent();
+            this.ErrorCode = error;
+            this.Message = message;
+        }
+    }
+
+    public class SqlToDocumentDbConversion
+
+    {
+
+        public event EventHandler<StatusEventArgs> StatusEvent;  // Fired many times. Single line status text.
+
+        public event EventHandler<StatusEventArgs> SampleOutputEvent;  // Fired at end of conversion, contains a sample of the output.
+
+        public SqlToDocumentDbConversion()
+        {
+            //InitializeComponent();
         
+        }
+
+        
+        private void SetStatus(int errorCode, string statusMessage)
+        {
+            if (StatusEvent != null)
+            {
+                var Args = new StatusEventArgs(errorCode, statusMessage);
+                StatusEvent( this, Args );
+            }
+        }
+
+        private void SetSampleOutput(int errorCode, string output)
+        {
+            if (SampleOutputEvent != null)
+            {
+                var Args = new StatusEventArgs(errorCode, output);
+                SampleOutputEvent(this, Args);
+            }
         }
 
         /*SqlConnection getConnection()
@@ -50,7 +88,7 @@ namespace FirebirdTest1
             return connection;
         }
         */
-        
+
         // This is the Firebird connection logic.
         FbConnection getConnection()
         {
@@ -87,6 +125,136 @@ namespace FirebirdTest1
             return qry.ExecuteReader(); // the command generates an FbDataReader.
         }
 
+
+
+       
+
+        // we want json fields to be in lowercase.
+        // we want the primary key from firebird to become _fbidentity in the converted record.
+        private string Normalize(string value, string id)
+        {
+            if (value.ToUpper() == id.ToUpper())
+                return "_fbidentity";
+            else
+                return value.ToLower();
+        }
+
+        /* 
+          private string NormalizeKeyValue(object value, string ColumnName)
+          { 
+          }
+         */
+
+        // Helper used when converting DataRow to a Dictionary, which we then can convert to JSON, used if you want to include nulls.
+        private JsonTableDictionary DataTableToDictionary(DataTable dt, string prefix, string id)
+        {
+            var cols = dt.Columns.Cast<DataColumn>().Where( c => c.ColumnName != id );
+            return dt.Rows.Cast<DataRow>()
+                     .ToDictionary(r => prefix+r[id].ToString(),
+                                   r => cols.ToDictionary(c => Normalize( c.ColumnName, id ), c => r[c.ColumnName]));
+        }
+
+
+        // Helper used when converting DataRow to a Dictionary, which we then can convert to JSON, used if you want to exclude nulls.
+        private JsonTableDictionary DataTableToSparseDictionary(DataTable dt, string prefix, string id)
+        {
+            var cols = dt.Columns.Cast<DataColumn>();// .Where(c => c.ColumnName != id);
+            return dt.Rows.Cast<DataRow>()
+                     .ToDictionary(r => prefix + r[id].ToString(),
+                                   r => cols.Where(c => !Convert.IsDBNull(r[c.ColumnName])).ToDictionary
+                                       (
+                                                c => Normalize(c.ColumnName,id), c => r[c.ColumnName]
+                                       )
+                                  );
+        }
+
+
+
+        public void DoConvert()
+        {
+            SetStatus(0, "Please wait...");
+            
+
+
+            //var StudyAccess = new LoggingAndConfig.STUDYACCESSDataTable(); 
+            //var StudyAccessAd = new LoggingAndConfigTableAdapters.STUDYACCESSTableAdapter();
+            //StudyAccessAd.Fill(StudyAccess);
+            var studyAd = new LoggingAndConfigTableAdapters.STUDYACCESSTableAdapter();
+            var startDate = System.DateTime.Now.AddDays(-365);
+            var endDate = System.DateTime.Now.AddDays(7);
+
+            
+            var StudyAccess = studyAd.GetDataByAccessTimeRange( startDate, endDate);
+
+
+            // here's our key: Transform the rows to documents, with a prefix, and a primary key value.
+            // The prefix is how we know the TYPE of the document.
+
+            // DataTableToSparseDictionary -> Do not include nulls.
+            // DataTableToDictionary -> Include nulls.
+            var dict = DataTableToSparseDictionary(StudyAccess, "RAMSOFT.AUDIT.STUDYACCESS.",  "ENTRYID");
+
+            var writer = new CouchbaseExportWriter("http://rscouchbase01.ramsoft.com:8091/pools"); // couchbase1.ramsoft.biz
+
+            var partialdict = new JsonTableDictionary();
+
+            writer.openBucket("default");
+
+            SetStatus(0, "bucket item count= " + writer.getBucketItemCount().ToString() );
+
+
+            int count = 0;
+
+            var sw = new Stopwatch();
+
+            sw.Start();
+
+            // Add some metadata
+            foreach (var item in dict)
+            {
+                item.Value["_document_type"] = "STUDYACCESS";
+                item.Value["_document_rev"] = "2";
+                item.Value["_document_origin"] = "FBIMPORT";
+
+                writer.upsert(item.Key, item.Value);
+
+                count++;
+
+                if (count<10)
+                {
+                    partialdict.Add(item.Key, item.Value);
+                }
+
+                if (sw.ElapsedMilliseconds > 360000)
+                {
+                    throw new CommunicationFailureException("Communications are too slow."); // Run this outside the debugger to speed it up! Or go to App.config and reduce or disable the Logging.
+                }
+
+            };
+
+            sw.Stop();
+
+            // Newtonsoft JSON serializer
+            var jsonSerializerSettings = new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore };
+
+            // Don't output the whole thing to screen, just a few items (partialdict = up to 10 items from dict)
+            SetSampleOutput( 0, JsonConvert.SerializeObject(
+                                            partialdict,
+                                            Newtonsoft.Json.Formatting.Indented,
+                                            jsonSerializerSettings) );
+
+
+
+
+        
+            SetStatus(0, "db upsert count: "+ dict.Count.ToString() + " elapsed:" +sw.ElapsedMilliseconds.ToString()+
+                          " ms, bucket item count= "+writer.getBucketItemCount().ToString() );
+
+
+        }
+
+        /*
+
         public void EnumerateDataSetsAndColumns() 
         {
             var LoggingAndConfigDataSet = new LoggingAndConfig();
@@ -109,8 +277,7 @@ namespace FirebirdTest1
             }
             richTextBox1.Text = sb.ToString();
         }
-
-        public void GetConfigurationItems()
+         public void GetConfigurationItems()
         {
             var Config = new LoggingAndConfig.CONFIGDataTable();
             var ConfigAd = new LoggingAndConfigTableAdapters.CONFIGTableAdapter();
@@ -165,45 +332,6 @@ namespace FirebirdTest1
             richTextBox1.Text = sb.ToString();
         }
 
-        // we want json fields to be in lowercase.
-        // we want the primary key from firebird to become _fbidentity in the converted record.
-        private string Normalize(string value, string id)
-        {
-            if (value.ToUpper() == id.ToUpper())
-                return "_fbidentity";
-            else
-                return value.ToLower();
-        }
-
-        /* 
-          private string NormalizeKeyValue(object value, string ColumnName)
-          { 
-          }
-         */
-
-        // Helper used when converting DataRow to a Dictionary, which we then can convert to JSON, used if you want to include nulls.
-        private JsonTableDictionary DataTableToDictionary(DataTable dt, string prefix, string id)
-        {
-            var cols = dt.Columns.Cast<DataColumn>().Where( c => c.ColumnName != id );
-            return dt.Rows.Cast<DataRow>()
-                     .ToDictionary(r => prefix+r[id].ToString(),
-                                   r => cols.ToDictionary(c => Normalize( c.ColumnName, id ), c => r[c.ColumnName]));
-        }
-
-
-        // Helper used when converting DataRow to a Dictionary, which we then can convert to JSON, used if you want to exclude nulls.
-        private JsonTableDictionary DataTableToSparseDictionary(DataTable dt, string prefix, string id)
-        {
-            var cols = dt.Columns.Cast<DataColumn>();// .Where(c => c.ColumnName != id);
-            return dt.Rows.Cast<DataRow>()
-                     .ToDictionary(r => prefix + r[id].ToString(),
-                                   r => cols.Where(c => !Convert.IsDBNull(r[c.ColumnName])).ToDictionary
-                                       (
-                                                c => Normalize(c.ColumnName,id), c => r[c.ColumnName]
-                                       )
-                                  );
-        }
-
 
         public void RunACustomQueryOnApplicationLogAndConvertToJSON()
         {
@@ -230,95 +358,12 @@ namespace FirebirdTest1
 
             
 
-            richTextBox1.Text = JsonConvert.SerializeObject(
+            SetSampleOutput( JsonConvert.SerializeObject(
                                             dict, 
                                             Newtonsoft.Json.Formatting.Indented,
-                                            jsonSerializerSettings);
+                                            jsonSerializerSettings) );
             // Newtonsoft.Json.Formatting.Indented 
-            label1.Text = "count: " + dict.Count.ToString();
-        }
-
-        public void RunACustomQueryOnStudyAccessLogAndConvertToJSON()
-        {
-            richTextBox1.Text = "Please wait...";
-            
-
-
-            //var StudyAccess = new LoggingAndConfig.STUDYACCESSDataTable(); 
-            //var StudyAccessAd = new LoggingAndConfigTableAdapters.STUDYACCESSTableAdapter();
-            //StudyAccessAd.Fill(StudyAccess);
-            var studyAd = new LoggingAndConfigTableAdapters.STUDYACCESSTableAdapter();
-            var startDate = System.DateTime.Now.AddDays(-365);
-            var endDate = System.DateTime.Now.AddDays(7);
-
-            
-            var StudyAccess = studyAd.GetDataByAccessTimeRange( startDate, endDate);
-
-
-            // here's our key: Transform the rows to documents, with a prefix, and a primary key value.
-            // The prefix is how we know the TYPE of the document.
-
-            // DataTableToSparseDictionary -> Do not include nulls.
-            // DataTableToDictionary -> Include nulls.
-            var dict = DataTableToSparseDictionary(StudyAccess, "STUDYACCESS.",  "ENTRYID");
-
-            var writer = new CouchbaseExportWriter("http://couchbase1.ramsoft.biz:8091/pools"); // couchbase1.ramsoft.biz
-
-            var partialdict = new JsonTableDictionary();
-
-            writer.openBucket("default");
-
-            label1.Text = "bucket item count= " + writer.getBucketItemCount().ToString();
-
-
-            int count = 0;
-
-            var sw = new Stopwatch();
-
-            sw.Start();
-
-            // Add some metadata
-            foreach (var item in dict)
-            {
-                item.Value["_document_type"] = "STUDYACCESS";
-                item.Value["_document_rev"] = "2";
-                item.Value["_document_origin"] = "FBIMPORT";
-
-                writer.upsert(item.Key, item.Value);
-
-                count++;
-
-                if (count<10)
-                {
-                    partialdict.Add(item.Key, item.Value);
-                }
-
-                if (sw.ElapsedMilliseconds > 60000)
-                {
-                    throw new CommunicationFailureException("Communications are too slow."); // Run this outside the debugger to speed it up! Or go to App.config and reduce or disable the Logging.
-                }
-
-            };
-
-            sw.Stop();
-
-            // Newtonsoft JSON serializer
-            var jsonSerializerSettings = new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore };
-
-            // Don't output the whole thing to screen, just a few items (partialdict = up to 10 items from dict)
-            richTextBox1.Text = JsonConvert.SerializeObject(
-                                            partialdict,
-                                            Newtonsoft.Json.Formatting.Indented,
-                                            jsonSerializerSettings);
-
-
-
-
-        
-            label1.Text = "db upsert count: "+ dict.Count.ToString() + " elapsed:" +sw.ElapsedMilliseconds.ToString()+
-                          " ms, bucket item count= "+writer.getBucketItemCount().ToString();
-
-
+            SetStatus( "count: " + dict.Count.ToString() );
         }
 
         private void DeleteDemo()
@@ -332,7 +377,7 @@ namespace FirebirdTest1
             
         }
 
-        private void JoinDemo()
+        private string JoinDemo()
         {
             // Query Administrator-level users.
             var connection = getConnection();
@@ -359,7 +404,7 @@ namespace FirebirdTest1
 
                 }
 
-                richTextBox1.Text = sb.ToString();
+                return sb.ToString();
             }
 
             trans.Commit();
@@ -369,22 +414,7 @@ namespace FirebirdTest1
 
         }
 
-        private void button1_Click(object sender, EventArgs e)
-        {
-           // DEMO1 - Find any table or field within the Dataset.
-           // EnumerateDataSetsAndColumns();
-
-           // DEMO2 - Some simple flattening of SQL complexity, configuration items.
-           // GetConfigurationItems();
-
-           // DEMO3 - Gets data from firebird and converts to JSON
-           //RunACustomQueryOnApplicationLogAndConvertToJSON();
-
-           // DEMO4 - Like demo3, but also writes to couchbase
-           RunACustomQueryOnStudyAccessLogAndConvertToJSON();
-
-           // DEMO5 - Do an SQL Join via a query with one parameter (@1)
-           // JoinDemo();
-        }
+        
+        */
     }
 }

@@ -64,8 +64,15 @@ namespace FirebirdTest1
                 string qryText = "SELECT COUNT(*) FROM `" + _bucket.Name + "`";
                 var queryRequest = new QueryRequest(qryText);
                 var result = _bucket.Query<dynamic>(queryRequest);
-                var row = result.Rows[0];
-                return row["$1"]; // Get value for default $1 result
+                if (( result.Success) && ( result.Rows.Count > 0))
+                {
+                    var row = result.Rows[0];
+                    return row["$1"]; // Get value for default $1 result
+                }
+                else
+                {
+                    return -1; // unknown.
+                }
             }
             else
             {

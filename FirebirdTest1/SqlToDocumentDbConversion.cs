@@ -51,6 +51,7 @@ namespace FirebirdTest1
 
     {
 
+        public string ServerUrl { get; set; }
         public event EventHandler<StatusEventArgs> StatusEvent;  // Fired many times. Single line status text.
 
         public event EventHandler<StatusEventArgs> SampleOutputEvent;  // Fired at end of conversion, contains a sample of the output.
@@ -160,10 +161,30 @@ namespace FirebirdTest1
         {
             var cols = dt.Columns.Cast<DataColumn>();// .Where(c => c.ColumnName != id);
             return dt.Rows.Cast<DataRow>()
-                     .ToDictionary(r => prefix + r[id].ToString(),
+                     .ToDictionary(r =>  prefix + r[id].ToString(),
                                    r => cols.Where(c => !Convert.IsDBNull(r[c.ColumnName])).ToDictionary
                                        (
                                                 c => Normalize(c.ColumnName,id), c => r[c.ColumnName]
+                                       )
+                                  );
+        }
+
+
+        private string GenerateUID()
+        {
+            Guid id = Guid.NewGuid();
+            return id.ToString().Replace("-", "");
+        }
+
+        // DataTableToSparseDictionaryUID : Dictionary Key is a UID.
+        private JsonTableDictionary DataTableToSparseDictionaryUID(DataTable dt, string prefix, string id)
+        {
+            var cols = dt.Columns.Cast<DataColumn>();// .Where(c => c.ColumnName != id);
+            return dt.Rows.Cast<DataRow>()
+                     .ToDictionary(r => prefix + GenerateUID(),
+                                   r => cols.Where(c => !Convert.IsDBNull(r[c.ColumnName])).ToDictionary
+                                       (
+                                                c => Normalize(c.ColumnName, id), c => r[c.ColumnName]
                                        )
                                   );
         }
@@ -192,9 +213,11 @@ namespace FirebirdTest1
 
             // DataTableToSparseDictionary -> Do not include nulls.
             // DataTableToDictionary -> Include nulls.
-            var dict = DataTableToSparseDictionary(StudyAccess, "RAMSOFT.AUDIT.STUDYACCESS.",  "ENTRYID");
+            // DataTableToSparseDictionaryUID -> Do not include nulls, generate UID
+            var dict = DataTableToSparseDictionaryUID(StudyAccess, "RAMSOFT.AUDIT.STUDYACCESS.",  "ENTRYID");
 
-            var writer = new CouchbaseExportWriter("http://rscouchbase01.ramsoft.com:8091/pools"); // couchbase1.ramsoft.biz
+            // http://rscouchbase01.ramsoft.com:8091/pools
+            var writer = new CouchbaseExportWriter(ServerUrl); 
 
             var partialdict = new JsonTableDictionary();
 

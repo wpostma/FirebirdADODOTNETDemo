@@ -28,10 +28,16 @@ using System.Data.SqlClient;
 namespace FirebirdTest1
 {
       [Serializable()]
-    public class CommunicationFailureException :  System.ApplicationException
+    public class CommunicationFailureException : Exception
     {
         public CommunicationFailureException() { }
         public CommunicationFailureException(string message) : base(message) { } 
+    }
+
+    public class QueryFailureException : Exception
+    {
+        public QueryFailureException() { }
+        public QueryFailureException(string message) : base(message) { }
     }
 
 
@@ -190,22 +196,76 @@ namespace FirebirdTest1
         }
 
 
-
-        public void DoConvert()
+        public void ConvertStudyAccessData()
         {
-            SetStatus(0, "Please wait...");
-            
-
+            SetStatus(0, "Please wait while we fetch study access data...");
 
             //var StudyAccess = new LoggingAndConfig.STUDYACCESSDataTable(); 
             //var StudyAccessAd = new LoggingAndConfigTableAdapters.STUDYACCESSTableAdapter();
             //StudyAccessAd.Fill(StudyAccess);
             var studyAd = new LoggingAndConfigTableAdapters.STUDYACCESSTableAdapter();
+
+            //var startDate = System.DateTime.Now.AddDays(-365);
+            //var endDate = System.DateTime.Now.AddDays(7);
+            //var StudyAccess = studyAd.GetDataByAccessTimeRange(startDate, endDate);
+
+
+            var StudyAccess = studyAd.GetData(); //  GetDataByAccessTimeRange(startDate, endDate);
+
+            var dict = DataTableToSparseDictionaryUID(StudyAccess, "RAMSOFT.AUDIT.STUDYACCESS.", "ENTRYID");
+
+            if (dict.Keys.Count == 0)
+            {
+                SetSampleOutput(100, "// WARNING: No results for STUDYACCESS");
+            }
+            DoConvertData(dict, "STUDYACCESS");
+        }
+
+
+        public void ConvertRetrieveStudyLogData()
+        {
+            SetStatus(0, "Please wait while we fetch retrieve study log data...");
+
+            var studyAd = new LoggingAndConfigTableAdapters.RETRIEVESTUDYLOGTableAdapter();
             var startDate = System.DateTime.Now.AddDays(-365);
             var endDate = System.DateTime.Now.AddDays(7);
 
+
+            var StudyAccess = studyAd.GetData(); // todo: GetDataByAccessTimeRange(startDate, endDate);
+
+            var dict = DataTableToSparseDictionaryUID(StudyAccess, "RAMSOFT.AUDIT.RETRIEVESTUDYLOG.", "ENTRYID");
+            if (dict.Keys.Count == 0)
+            {
+                SetSampleOutput(100, "// WARNING: No results for RETRIEVESTUDYLOG \n");
+            }
+            DoConvertData(dict, "RETRIEVESTUDYLOG");
+        }
+
+        public void ConvertRetrieveRequestLogData()
+        {
+            SetStatus(0, "Please wait while we fetch request log data...");
+
+            var studyAd = new LoggingAndConfigTableAdapters.REQUESTLOGTableAdapter();
+            var startDate = System.DateTime.Now.AddDays(-365);
+            var endDate = System.DateTime.Now.AddDays(7);
+
+
+            var StudyAccess = studyAd.GetData(); // todo: GetDataByAccessTimeRange(startDate, endDate);
+
+            var dict = DataTableToSparseDictionaryUID(StudyAccess, "RAMSOFT.AUDIT.REQUESTLOG.", "ENTRYID");
+            if (dict.Keys.Count == 0)
+            {
+                SetSampleOutput(100, "// WARNING: No results for REQUESTLOG \n");
+            }
+            DoConvertData(dict, "REQUESTLOG");
+        }
+
+
+        public void DoConvertData(JsonTableDictionary dict, string doctype)
+        {
+            SetStatus(0, "Please wait while we connect to couchbase...");
             
-            var StudyAccess = studyAd.GetDataByAccessTimeRange( startDate, endDate);
+
 
 
             // here's our key: Transform the rows to documents, with a prefix, and a primary key value.
@@ -214,7 +274,6 @@ namespace FirebirdTest1
             // DataTableToSparseDictionary -> Do not include nulls.
             // DataTableToDictionary -> Include nulls.
             // DataTableToSparseDictionaryUID -> Do not include nulls, generate UID
-            var dict = DataTableToSparseDictionaryUID(StudyAccess, "RAMSOFT.AUDIT.STUDYACCESS.",  "ENTRYID");
 
             // http://rscouchbase01.ramsoft.com:8091/pools
             var writer = new CouchbaseExportWriter(ServerUrl); 
@@ -223,7 +282,7 @@ namespace FirebirdTest1
 
             writer.openBucket("default");
 
-            SetStatus(0, "bucket item count= " + writer.getBucketItemCount().ToString() );
+            SetStatus(0, "Please wait while we write " + writer.getBucketItemCount().ToString() + " "+doctype+ " items... " );
 
 
             int count = 0;
@@ -235,7 +294,7 @@ namespace FirebirdTest1
             // Add some metadata
             foreach (var item in dict)
             {
-                item.Value["_document_type"] = "STUDYACCESS";
+                item.Value["_document_type"] = doctype;
                 item.Value["_document_rev"] = "2";
                 item.Value["_document_origin"] = "FBIMPORT";
 
@@ -243,12 +302,13 @@ namespace FirebirdTest1
 
                 count++;
 
+                // generate some sample output into partialdict. Only show 10 rows
                 if (count<10)
                 {
                     partialdict.Add(item.Key, item.Value);
                 }
 
-                if (sw.ElapsedMilliseconds > 360000)
+                if (sw.ElapsedMilliseconds > (1500* count) )
                 {
                     throw new CommunicationFailureException("Communications are too slow."); // Run this outside the debugger to speed it up! Or go to App.config and reduce or disable the Logging.
                 }
@@ -261,10 +321,10 @@ namespace FirebirdTest1
             var jsonSerializerSettings = new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore };
 
             // Don't output the whole thing to screen, just a few items (partialdict = up to 10 items from dict)
-            SetSampleOutput( 0, JsonConvert.SerializeObject(
+            SetSampleOutput( 0, "// "+doctype+"\n"+JsonConvert.SerializeObject(
                                             partialdict,
                                             Newtonsoft.Json.Formatting.Indented,
-                                            jsonSerializerSettings) );
+                                            jsonSerializerSettings)+"\n" );
 
 
 

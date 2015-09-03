@@ -28,7 +28,7 @@ namespace FirebirdTest1
 
         public void SampleOutputEvent(object sender, StatusEventArgs args)
         {
-            textBox1.Text = args.Message;
+            textBox1.AppendText(  args.Message );
             textBox1.Refresh();
         }
 
@@ -63,7 +63,11 @@ namespace FirebirdTest1
             toolStripStatusLabel1.BackColor = Color.Beige;
             statusStrip1.Refresh(); 
 
-            Conversion.DoConvert(); // run the conversion.
+            Conversion.ConvertStudyAccessData(); // run the Study Access Log Data conversion.
+            Conversion.ConvertRetrieveStudyLogData();
+            Conversion.ConvertRetrieveRequestLogData();
+
+
 
             statusStrip1.Refresh();
 

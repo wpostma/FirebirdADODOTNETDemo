@@ -263,7 +263,7 @@ namespace FirebirdTest1
 
         public void DoConvertData(JsonTableDictionary dict, string doctype)
         {
-            SetStatus(0, "Please wait while we connect to couchbase...");
+            SetStatus(0, "Please wait while we convert "+dict.Keys.Count.ToString()+" database query result items to couchbase documents...");
             
 
 

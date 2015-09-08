@@ -22,7 +22,7 @@ namespace FirebirdTest1
         {
             toolStripStatusLabel1.Text = args.Message;
             statusStrip1.Refresh();
-
+            textBox1.AppendText( "\nSTATUS: "+args.Message+"\n" );
 
         }
 
@@ -63,10 +63,10 @@ namespace FirebirdTest1
             toolStripStatusLabel1.BackColor = Color.Beige;
             statusStrip1.Refresh(); 
 
-            Conversion.ConvertStudyAccessData(); // run the Study Access Log Data conversion.
             Conversion.ConvertRetrieveStudyLogData();
             Conversion.ConvertRetrieveRequestLogData();
 
+            Conversion.ConvertStudyAccessData(); // run the Study Access Log Data conversion.
 
 
             statusStrip1.Refresh();
